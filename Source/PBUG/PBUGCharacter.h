@@ -1,0 +1,211 @@
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Character.h"
+#include "Logging/LogMacros.h"
+#include "InteractionInterface.h" 
+#include "BPC_Inventory.h"
+#include "PBUGCharacter.generated.h"
+class USpringArmComponent;
+class UCameraComponent;
+class UInputMappingContext;
+class UInputAction;
+struct FInputActionValue;
+
+DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHealthChanged, float, CurrentHealth, float, MaxHealth);
+
+UCLASS(config=Game)
+class APBUGCharacter : public ACharacter
+{
+	GENERATED_BODY()
+
+	/** Camera boom positioning the camera behind the character */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
+	USpringArmComponent* CameraBoom;
+
+	/** Follow camera */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
+	UCameraComponent* FollowCamera;
+	
+	/** MappingContext */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputMappingContext* DefaultMappingContext;
+
+	/** Jump Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* JumpAction;
+
+	/** Move Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* MoveAction;
+
+	/** Look Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* LookAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* InteractAction;
+
+	// / Aim Input Action
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* AimAction;
+
+	/** Equip Slot 1 Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* EquipSlot1Action;
+
+	/** Equip Slot 2 Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* EquipSlot2Action;
+
+	/** Holster Weapon Input Action (무기 집어넣기) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* HolsterAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* SwitchFireModeAction;
+
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnHealthChanged OnHealthChanged;
+
+	AActor* LastTarget;
+
+public:
+	APBUGCharacter();
+	
+
+
+protected:
+
+	FTimerHandle InteractTimerHandle;
+
+	/** Called for movement input */
+	void Move(const FInputActionValue& Value);
+
+	/** Called for looking input */
+	void Look(const FInputActionValue& Value);
+			
+	void CheckInteractables();
+
+	// 1번 무기 꺼내기
+	void EquipSlot1(const FInputActionValue& Value);
+
+	// 2번 무기 꺼내기
+	void EquipSlot2(const FInputActionValue& Value);
+
+	// 무기 집어넣기 (맨손)
+	void HolsterWeapon(const FInputActionValue& Value);
+
+protected:
+	// APawn interface
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	
+	// To add mapping context
+	virtual void BeginPlay();
+
+	// / 발사 버튼 입력 액션
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* FireAction;
+
+	/** 발사 버튼을 눌렀을 때 실행될 핸들러 함수 */
+	void Fire(const FInputActionValue& Value);
+
+
+	// 입력과 연결될 함수
+	void Interact(const FInputActionValue& Value);
+
+	// 현재 체력 (RepNotify를 사용하여 UI 자동 갱신)
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth, BlueprintReadOnly, Category = "Stat")
+	float CurrentHealth = 100.0f;
+
+	// 최대 체력 변수
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stat")
+	float MaxHealth = 100.0f;
+
+	// 1. 사망 상태 변수 (복제 설정)
+	UPROPERTY(ReplicatedUsing = OnRep_IsDead, BlueprintReadOnly, Category = "State")
+	bool bIsDead = false;
+
+	// 2. 사망 시 클라이언트에서 실행될 비주얼 함수
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	// 3. 내부 사망 처리 로직
+	void HandleDeathVisuals();
+
+
+	// 자동 갱신 할때 실행되는 함수
+	UFUNCTION()
+	void OnRep_CurrentHealth();
+
+	void Die();
+
+	// 조준 입력과 연결될 함수
+	void StartAim(const FInputActionValue& Value);
+	void StopAim(const FInputActionValue& Value);
+
+	// 블루프린트에서 구현할 조준 애니메이션 이벤트
+	UFUNCTION(BlueprintImplementableEvent, Category = "Combat")
+	void K2_StartADSEffects();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Combat")
+	void K2_StopADSEffects();
+
+	/*============== 연사 =================*/
+
+	// 사격 중단을 위한 함수 추가
+	void StopFire(const FInputActionValue& Value);
+
+	// 사격 모드 전환을 위한 함수 추가
+	void SwitchFireMode(const FInputActionValue& Value);
+
+
+public:
+	// 데미지 받기
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction")
+	AActor* TargetActor;
+
+	// 인벤토리 컴포넌트 장착
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
+	class UBPC_Inventory* InventoryComponent;
+
+	// 장비 컴포넌트 장착
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+	class UBPC_Equipment* EquipmentComponent;
+
+	// F키를 눌렀을 때 실행할 함수
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void PickupItem();
+
+	// 서버에서 실행될 진짜 줍기 함수 (RPC)
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Interaction")
+	void Server_PickupItem(AActor* ItemToPickup);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Interaction")
+	void OnTargetItemChanged(AActor* NewTarget);
+
+	// 일반 아이템 버리기
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Inventory")
+	void Server_DropItem(FName ItemID, int32 Quantity);
+
+	// 무기 버리기
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Inventory")
+	void Server_DropWeapon(int32 SlotIndex);
+
+	// 위 아래 조준 각도 가져오는 함수
+	UFUNCTION(BlueprintPure, Category = "Combat")
+	float GetAimPitch() const;
+
+	/** Returns CameraBoom subobject **/
+	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+	/** Returns FollowCamera subobject **/
+	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+	
+};
+
