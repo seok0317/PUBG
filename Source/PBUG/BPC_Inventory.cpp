@@ -203,3 +203,41 @@ void UBPC_Inventory::SpawnItemOnGround(FName ItemID, int32 Quantity)
         UE_LOG(LogTemp, Warning, TEXT("Dropped Item: %s, Qty: %d"), *ItemID.ToString(), Quantity);
     }
 }
+
+int32 UBPC_Inventory::GetTotalQuantityByID(FName ItemID)
+{
+    int32 Total = 0;
+    for (const FSlotData& Slot : InventoryArray)
+    {
+        if (Slot.ItemID == ItemID) Total += Slot.Quantity;
+    }
+    return Total;
+}
+
+void UBPC_Inventory::ConsumeItem(FName ItemID, int32 Quantity)
+{
+    int32 RemainingToRemove = Quantity;
+
+    for (int32 i = InventoryArray.Num() - 1; i >= 0; i--)
+    {
+        if (InventoryArray[i].ItemID == ItemID)
+        {
+            if (InventoryArray[i].Quantity > RemainingToRemove)
+            {
+                InventoryArray[i].Quantity -= RemainingToRemove;
+                RemainingToRemove = 0;
+                break;
+            }
+            else
+            {
+                RemainingToRemove -= InventoryArray[i].Quantity;
+                InventoryArray.RemoveAt(i);
+            }
+        }
+        if (RemainingToRemove <= 0) break;
+    }
+
+    // 무게 갱신 및 UI 업데이트
+    // (기존에 만든 무게 계산 로직이 있다면 여기서 호출)
+    OnInventoryUpdated.Broadcast();
+}

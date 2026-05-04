@@ -5,6 +5,15 @@
 #include "ItemData.generated.h"
 
 UENUM(BlueprintType)
+enum class EConsumableType : uint8
+{
+	Bandage UMETA(DisplayName = "Bandage"),        // 붕대 (찔끔 회복)
+	FirstAidKit UMETA(DisplayName = "FirstAidKit"), // 구상 (75%까지 회복)
+	MedKit UMETA(DisplayName = "MedKit"),         // 의료용 키트 (100% 회복)
+	Drink UMETA(DisplayName = "Drink")             // 에너지 드링크
+};
+
+UENUM(BlueprintType)
 enum class EFireMode : uint8
 {
 	Single UMETA(DisplayName = "Single"), // 단발
@@ -71,6 +80,20 @@ public:
 	TSubclassOf<AActor> WeaponClass;
 
 
+	// 회복 아이템 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Consumable")
+	EConsumableType ConsumableType;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Consumable")
+	float UseTime; // 사용에 걸리는 시간 (초)
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Consumable")
+	float HealAmount; // 회복량
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Consumable")
+	float MaxHealLimit; // 회복 한계선 (예: 75.0 또는 100.0)
+
+
 	// 탄도학 관련 변수들
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Ballistics")
 	float MuzzleVelocity; // 탄속 (예: 900.0)
@@ -116,6 +139,19 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
 	float RecoilRecoveryFraction; // 복구 비율 (0.5면 쏜 반동의 50%만 복구됨)
+
+
+	// 장탄수, 장전
+
+	// FItemData 구조체 내부에 추가
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Stats")
+	FName AmmoItemID; // 이 총이 사용하는 탄약의 ID (예: "Ammo_556")
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Stats")
+	int32 MaxAmmo; // 탄창 용량 (예: 30)
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Animations")
+	UAnimMontage* ReloadMontage;
 
 };
 

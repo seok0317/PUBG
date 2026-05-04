@@ -6,6 +6,7 @@
 #include "BPC_Equipment.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnEquipmentUpdated);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAmmoUpdated);
 
 class ABulletProjectile;
 
@@ -21,6 +22,9 @@ protected:
 	virtual void BeginPlay() override;
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	// 현재 들고 있는 무기의 잔탄수와 최대 탄창 용량을 가져오는 헬퍼 함수
+	void GetCurrentAmmoData(int32& OutCurrentAmmo, int32& OutMaxAmmo, FName& OutAmmoID);
 
 
 public:
@@ -148,6 +152,37 @@ public:
 	// 플레이어가 마우스를 움직이고 있는지 체크 (마우스 조작 중엔 복구 일시 정지)
 	bool bIsUserMovingMouse = false;
 
+	/* ===================== 재장전 ======================= */
+
+	// 1번 슬롯 무기의 현재 잔탄수 (복제)
+	UPROPERTY(ReplicatedUsing = OnRep_AmmoChanged, BlueprintReadOnly, Category = "Equipment")
+	int32 AmmoInMag1;
+
+	// 2번 슬롯 무기의 현재 잔탄수 (복제)
+	UPROPERTY(ReplicatedUsing = OnRep_AmmoChanged, BlueprintReadOnly, Category = "Equipment")
+	int32 AmmoInMag2;
+
+	// 재장전 요청 서버 RPC
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Weapon")
+	void Server_Reload();
+
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnAmmoUpdated OnAmmoUpdated;
+
+	UFUNCTION()
+	void OnRep_AmmoChanged();
+
+	// 현재 들고 있는 무기의 [현재 탄창 / 예비 탄수]를 한 번에 가져오는 함수
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void GetCurrentWeaponAmmoInfo(int32& CurrentMag, int32& TotalExtra);
+
+	// 장전 애니메이션 여부
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Weapon")
+	bool bIsReloading = false;
+
+	// 애니메이션 재생을 위한 멀티캐스트 RPC
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayReloadAnim(UAnimMontage* MontageToPlay);
 
 private:
 	// 실제로 총을 소환해서 붙이는 내부 함수
@@ -161,4 +196,7 @@ private:
 
 	// 실제로 발사 로직(조준 보정 + Server_Fire)을 실행하는 함수
 	void FireTick();
+
+	// 재장전 처리를 완료하는 함수 (타이머용)
+	void FinishReloading();
 };

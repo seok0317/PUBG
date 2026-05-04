@@ -7,6 +7,7 @@
 #include "Logging/LogMacros.h"
 #include "InteractionInterface.h" 
 #include "BPC_Inventory.h"
+#include "GameplayTagContainer.h"
 #include "PBUGCharacter.generated.h"
 class USpringArmComponent;
 class UCameraComponent;
@@ -66,6 +67,9 @@ class APBUGCharacter : public ACharacter
 	class UInputAction* HolsterAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	class UInputAction* ReloadAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* SwitchFireModeAction;
 
 	UPROPERTY(BlueprintAssignable, Category = "Events")
@@ -113,6 +117,7 @@ protected:
 	/** 발사 버튼을 눌렀을 때 실행될 핸들러 함수 */
 	void Fire(const FInputActionValue& Value);
 
+	void Reload(const FInputActionValue& Value);
 
 	// 입력과 연결될 함수
 	void Interact(const FInputActionValue& Value);
@@ -162,10 +167,19 @@ protected:
 	// 사격 모드 전환을 위한 함수 추가
 	void SwitchFireMode(const FInputActionValue& Value);
 
+	/*============= Tag ==============*/
+
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Abilities")
+	FGameplayTagContainer ActiveGameplayTags;
+
 
 public:
 	// 데미지 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+	// 체력 회복 함수 (MaxHealth를 넘지 않도록 처리)
+	UFUNCTION(BlueprintCallable, Category = "Stat")
+	void Heal(float HealAmount, float MaxLimit);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction")
 	AActor* TargetActor;
@@ -177,6 +191,10 @@ public:
 	// 장비 컴포넌트 장착
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
 	class UBPC_Equipment* EquipmentComponent;
+
+	// 소비 아이템 컴포넌트 장착
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Consumable")
+	class UBPC_ConsumableComponent* ConsumableComponent;
 
 	// F키를 눌렀을 때 실행할 함수
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
@@ -201,11 +219,39 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	float GetAimPitch() const;
 
+	UFUNCTION(BlueprintPure, Category = "Stat")
+	float GetCurrentHealth() const { return CurrentHealth; }
+
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 
+	/*========================== Tag ==========================*/
+
+	// 태그 추가
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	void AddGameplayTag(FGameplayTag TagToAdd);
+
+	// 태그 제거
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	void RemoveGameplayTag(FGameplayTag TagToRemove);
+
+	// 태그 확인 (정확히 일치하는지)
+	UFUNCTION(BlueprintPure, Category = "Abilities")
+	bool HasMatchingTag(FGameplayTag TagToCheck) const;
+
 	
+	 // 계층 구조 체크 (State.Action 하위 태그가 하나라도 있는지 확인할 때 사용)
+	bool HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const;
+
+
+	// --- 기존 블루프린트 노드 유지용 브릿지 함수 ---
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsDead() const;
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsAiming() const;
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsReloading() const;
 };
 

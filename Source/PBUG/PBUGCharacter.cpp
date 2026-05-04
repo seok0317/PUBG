@@ -14,6 +14,7 @@
 #include "BPC_Equipment.h"
 #include "InputActionValue.h"
 #include "Net/UnrealNetwork.h"
+#include "BPC_ConsumableComponent.h"
 #include "Camera/CameraComponent.h" // 카메라 컴포넌트 접근용
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
@@ -64,6 +65,8 @@ APBUGCharacter::APBUGCharacter()
 	// 장비 컴포넌트 장착
 	EquipmentComponent = CreateDefaultSubobject<UBPC_Equipment>(TEXT("EquipmentComponent"));
 
+	ConsumableComponent = CreateDefaultSubobject<UBPC_ConsumableComponent>(TEXT("ConsumableComponent"));
+
 	bReplicates = true;
 }
 
@@ -108,6 +111,8 @@ void APBUGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Started, this, &APBUGCharacter::StartAim);
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &APBUGCharacter::StopAim);
 
+		EnhancedInputComponent->BindAction(ReloadAction, ETriggerEvent::Started, this, &APBUGCharacter::Reload);
+
 		if (EquipSlot1Action)
 		{
 			EnhancedInputComponent->BindAction(EquipSlot1Action, ETriggerEvent::Started, this, &APBUGCharacter::EquipSlot1);
@@ -143,7 +148,15 @@ void APBUGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 }
 
 void APBUGCharacter::Interact(const FInputActionValue& Value) {
-	PickupItem(); // 아까 만든 줍기 함수 호출!
+	// Action 태그(장전, 회복 등)가 하나라도 있으면 취소 명령
+	FGameplayTagContainer ActionTags;
+	ActionTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Action")));
+
+	if (HasAnyMatchingGameplayTags(ActionTags)) {
+		if (ConsumableComponent) ConsumableComponent->CancelUsing();
+		return;
+	}
+	PickupItem();
 }
 
 void APBUGCharacter::Move(const FInputActionValue& Value)
@@ -301,6 +314,11 @@ void APBUGCharacter::HolsterWeapon(const FInputActionValue& Value)
 
 void APBUGCharacter::Fire(const FInputActionValue& Value)
 {
+	if (HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action"))))
+	{
+		if (ConsumableComponent) ConsumableComponent->CancelUsing();
+		return;
+	}
 	if (EquipmentComponent)
 	{
 		EquipmentComponent->StartFire();
@@ -327,6 +345,14 @@ void APBUGCharacter::SwitchFireMode(const FInputActionValue& Value)
 	}
 }
 
+void APBUGCharacter::Reload(const FInputActionValue& Value)
+{
+	if (EquipmentComponent)
+	{
+		EquipmentComponent->Server_Reload();
+	}
+}
+
 bool APBUGCharacter::Server_DropItem_Validate(FName ItemID, int32 Quantity) { return true; }
 
 void APBUGCharacter::Server_DropItem_Implementation(FName ItemID, int32 Quantity)
@@ -346,11 +372,14 @@ void APBUGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(APBUGCharacter, CurrentHealth);
 	DOREPLIFETIME(APBUGCharacter, bIsDead);
+
+	DOREPLIFETIME(APBUGCharacter, ActiveGameplayTags);
 }
 
 float APBUGCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-	if (GetLocalRole() < ROLE_Authority || CurrentHealth <= 0) return 0.f;
+	if (GetLocalRole() < ROLE_Authority || IsDead()) return 0.f;
+
 
 	// 체력 감소 및 제한
 	CurrentHealth = FMath::Clamp(CurrentHealth - DamageAmount, 0.0f, MaxHealth);
@@ -360,7 +389,7 @@ float APBUGCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
 
 	if (CurrentHealth <= 0) {
-		bIsDead = true;
+		AddGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Dead")));
 		OnRep_IsDead();
 		Die();
 	}
@@ -431,3 +460,51 @@ float APBUGCharacter::GetAimPitch() const
 	// 3. Pitch 값 반환 (배그 에임 오프셋은 보통 위가 +, 아래가 - 혹은 그 반대입니다)
 	return Delta.Pitch;
 }
+
+void APBUGCharacter::Heal(float HealAmount, float MaxLimit)
+{
+	if (CurrentHealth <= 0 || bIsDead) return;
+
+	// [배그 로직] 이미 현재 체력이 아이템의 한계치보다 높으면 회복 불가
+	if (CurrentHealth >= MaxLimit)
+	{
+		UE_LOG(LogTemp, Log, TEXT("이미 한계치 이상입니다."));
+		return;
+	}
+
+	// 새로운 체력 계산: 현재 체력 + 회복량
+	float NewHealth = CurrentHealth + HealAmount;
+
+	// [핵심] 계산된 체력이 아이템 한계치(MaxLimit)를 넘지 못하게 제한
+	CurrentHealth = FMath::Min(NewHealth, MaxLimit);
+
+	// UI 갱신 호출
+	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+
+	UE_LOG(LogTemp, Warning, TEXT("Healed to: %f (Limit: %f)"), CurrentHealth, MaxLimit);
+}
+
+void APBUGCharacter::AddGameplayTag(FGameplayTag TagToAdd)
+{
+	ActiveGameplayTags.AddTag(TagToAdd);
+}
+
+void APBUGCharacter::RemoveGameplayTag(FGameplayTag TagToRemove)
+{
+	ActiveGameplayTags.RemoveTag(TagToRemove);
+}
+
+bool APBUGCharacter::HasMatchingTag(FGameplayTag TagToCheck) const
+{
+	// HasTagExact는 하위 태그를 무시하고 정확히 일치할 때만 true
+	return ActiveGameplayTags.HasTagExact(TagToCheck);
+}
+
+// 부모 태그(예: State.Action)만 넣어도 자식 태그(Reloading 등)가 있는지 검사하는 함수
+bool APBUGCharacter::HasAnyMatchingGameplayTags(const FGameplayTagContainer& TagContainer) const {
+	return ActiveGameplayTags.HasAny(TagContainer);
+}
+
+bool APBUGCharacter::IsDead() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Dead"))); }
+bool APBUGCharacter::IsAiming() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Aiming"))); }
+bool APBUGCharacter::IsReloading() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action.Reloading"))); }

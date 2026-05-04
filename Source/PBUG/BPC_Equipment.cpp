@@ -32,6 +32,11 @@ void UBPC_Equipment::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(UBPC_Equipment, CurrentWeaponIndex); // 추가!
 	DOREPLIFETIME(UBPC_Equipment, bIsAiming);
 	DOREPLIFETIME(UBPC_Equipment, CurrentFireMode);
+
+	DOREPLIFETIME(UBPC_Equipment, AmmoInMag1);
+	DOREPLIFETIME(UBPC_Equipment, AmmoInMag2);
+
+	DOREPLIFETIME(UBPC_Equipment, bIsReloading);
 }
 
 bool UBPC_Equipment::Server_EquipWeapon_Validate(FName ItemID) { return true; }
@@ -102,6 +107,7 @@ void UBPC_Equipment::Server_EquipWeaponIndex_Implementation(int32 SlotIndex)
 
 	// 서버 본인의 화면(비주얼) 업데이트
 	UpdateWeaponAttachment();
+	OnAmmoUpdated.Broadcast();
 }
 
 bool UBPC_Equipment::Server_EquipWeaponIndex_Validate(int32 SlotIndex)
@@ -114,6 +120,7 @@ void UBPC_Equipment::OnRep_CurrentWeaponIndex()
 {
 	// 클라이언트들의 화면(비주얼) 업데이트
 	UpdateWeaponAttachment();
+	OnAmmoUpdated.Broadcast();
 }
 
 void UBPC_Equipment::OnRep_MainWeapon1()
@@ -129,7 +136,8 @@ void UBPC_Equipment::OnRep_MainWeapon2()
 void UBPC_Equipment::UpdateWeaponAttachment()
 {
 	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-	if (!OwnerCharacter) return;
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner()); // 태그 관리를 위해 추가
+	if (!OwnerCharacter || !PC) return;
 
 	USkeletalMeshComponent* CharacterMesh = OwnerCharacter->GetMesh();
 	if (!CharacterMesh) return;
@@ -144,14 +152,21 @@ void UBPC_Equipment::UpdateWeaponAttachment()
 		MainWeapon2Actor->AttachToComponent(CharacterMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("WeaponBack_02"));
 	}
 
-	// 2. 현재 선택된 무기만 오른손(Weapon_R) 소켓으로 옮깁니다.
-	if (CurrentWeaponIndex == 1 && MainWeapon1Actor)
+	FGameplayTag ArmedTag = FGameplayTag::RequestGameplayTag(FName("State.Status.Armed"));
+
+	// 2. 현재 선택된 무기만 손으로 옮기고 태그 부착
+	if (CurrentWeaponIndex > 0)
 	{
-		MainWeapon1Actor->AttachToComponent(CharacterMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Weapon_R"));
+		AActor* TargetActor = (CurrentWeaponIndex == 1) ? MainWeapon1Actor : MainWeapon2Actor;
+		if (TargetActor)
+		{
+			TargetActor->AttachToComponent(CharacterMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Weapon_R"));
+			PC->AddGameplayTag(ArmedTag); // 무기 들었음 태그 추가
+		}
 	}
-	else if (CurrentWeaponIndex == 2 && MainWeapon2Actor)
+	else
 	{
-		MainWeapon2Actor->AttachToComponent(CharacterMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Weapon_R"));
+		PC->RemoveGameplayTag(ArmedTag); // 맨손이면 태그 제거
 	}
 }
 
@@ -269,6 +284,12 @@ void UBPC_Equipment::Server_Fire_Implementation(FVector MuzzleLocation, FRotator
 		UE_LOG(LogTemp, Warning, TEXT("Warning: MuzzleVelocity is 0. Bullet will not move!"));
 	}
 
+	if (CurrentWeaponIndex == 1 && AmmoInMag1 > 0) AmmoInMag1--;
+	else if (CurrentWeaponIndex == 2 && AmmoInMag2 > 0) AmmoInMag2--;
+	else return;
+
+	OnAmmoUpdated.Broadcast();
+
 	// [체크 5] 총알 스폰
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = GetOwner();
@@ -372,6 +393,16 @@ bool UBPC_Equipment::Server_SetAiming_Validate(bool bNewAiming) { return true; }
 void UBPC_Equipment::Server_SetAiming_Implementation(bool bNewAiming) {
 	bIsAiming = bNewAiming;
 	// 서버(호스트) 본인의 비주얼 업데이트를 위해 호출
+
+	// 조준중임을 태그로 관리
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
+	if (PC)
+	{
+		FGameplayTag AimTag = FGameplayTag::RequestGameplayTag(FName("State.Status.Aiming"));
+		if (bNewAiming) PC->AddGameplayTag(AimTag);
+		else PC->RemoveGameplayTag(AimTag);
+	}
+
 	OnRep_IsAiming();
 }
 
@@ -453,6 +484,11 @@ void UBPC_Equipment::Server_SwitchFireMode_Implementation()
 // 사격 제어 로직 구현
 void UBPC_Equipment::StartFire()
 {
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
+	if (!PC || PC->IsDead()) return;
+
+	// 사격 시작 태그 부착 (Status이므로 Action 체크에 안 걸림)
+	PC->AddGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Firing")));
 	
 	// 즉시 한 발 발사
 	FireTick();
@@ -474,13 +510,23 @@ void UBPC_Equipment::StartFire()
 void UBPC_Equipment::StopFire()
 {
 	GetWorld()->GetTimerManager().ClearTimer(FireTimerHandle);
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
+	if (PC) PC->RemoveGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Firing")));
 }
 
 // 실제 발사 및 조준 보정 로직 (기존 캐릭터의 Fire 로직을 이식)
 void UBPC_Equipment::FireTick()
 {
+	int32 CurrentAmmo, MaxAmmo;
+	FName AmmoID;
+	GetCurrentAmmoData(CurrentAmmo, MaxAmmo, AmmoID);
+
 	APBUGCharacter* OwnerChar = Cast<APBUGCharacter>(GetOwner());
-	if (!OwnerChar || CurrentWeaponIndex == 0)
+
+	FGameplayTagContainer ActionContainer;
+	ActionContainer.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Action")));
+
+	if (!OwnerChar || OwnerChar->HasAnyMatchingGameplayTags(ActionContainer))
 	{
 		StopFire();
 		return;
@@ -488,6 +534,14 @@ void UBPC_Equipment::FireTick()
 
 	AActor* CurrentWeaponActor = (CurrentWeaponIndex == 1) ? MainWeapon1Actor : MainWeapon2Actor;
 	if (!CurrentWeaponActor) return;
+
+	// 탄약이 없으면 사격 중지
+	if (CurrentAmmo <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("탄약 없음! 재장전 필요"));
+		StopFire();
+		return;
+	}
 
 	UStaticMeshComponent* WeaponMesh = CurrentWeaponActor->FindComponentByClass<UStaticMeshComponent>();
 	if (WeaponMesh)
@@ -586,6 +640,137 @@ void UBPC_Equipment::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 				PC->AddPitchInput(RecoveryAmount);
 				PendingRecoilRecovery -= RecoveryAmount;
 			}
+		}
+	}
+}
+
+bool UBPC_Equipment::Server_Reload_Validate() { return true; }
+
+void UBPC_Equipment::Server_Reload_Implementation()
+{
+	if (CurrentWeaponIndex == 0) return;
+
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
+	// 이미 무언가 행동 중이면 장전 불가
+	if (!PC || PC->HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action.Reloading")))) return;
+
+	int32 CurrentAmmo, MaxAmmo;
+	FName AmmoID;
+	GetCurrentAmmoData(CurrentAmmo, MaxAmmo, AmmoID);
+
+	// 이미 꽉 차있으면 재장전 불필요
+	if (CurrentAmmo >= MaxAmmo) return;
+
+	UBPC_Inventory* Inv = GetOwner()->FindComponentByClass<UBPC_Inventory>();
+	if (!Inv) return;
+
+	// 인벤토리에 해당 탄약이 있는지 확인
+	int32 AvailableAmmo = Inv->GetTotalQuantityByID(AmmoID);
+	if (AvailableAmmo <= 0) return;
+
+	// 1. 재장전 시작 상태로 변경
+	PC->AddGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Action.Reloading")));
+	bIsReloading = true;
+
+	// 2. 무기 데이터에서 몽타주 가져오기
+	FName ItemID = (CurrentWeaponIndex == 1) ? MainWeapon1.ItemID : MainWeapon2.ItemID;
+	FItemData* Data = ItemDataTable->FindRow<FItemData>(ItemID, TEXT(""));
+
+	if (Data && Data->ReloadMontage)
+	{
+		// 3. 모든 클라이언트에게 애니메이션 재생 명령
+		Multicast_PlayReloadAnim(Data->ReloadMontage);
+
+		// 4. 애니메이션 길이만큼 기다린 후 탄약 채우기 (타이머)
+		float AnimDuration = Data->ReloadMontage->GetPlayLength();
+		GetWorld()->GetTimerManager().SetTimer(FireTimerHandle, this, &UBPC_Equipment::FinishReloading, AnimDuration, false);
+	}
+	else
+	{
+		// 애니메이션이 없으면 즉시 완료
+		FinishReloading();
+	}
+}
+
+void UBPC_Equipment::Multicast_PlayReloadAnim_Implementation(UAnimMontage* MontageToPlay)
+{
+	ACharacter* OwnerChar = Cast<ACharacter>(GetOwner());
+	if (OwnerChar)
+	{
+		OwnerChar->PlayAnimMontage(MontageToPlay);
+	}
+}
+
+// 탄약이 실제로 차는 시점
+void UBPC_Equipment::FinishReloading()
+{
+	if (!bIsReloading) return;
+
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
+	if (PC) PC->RemoveGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Action.Reloading")));
+
+	int32 CurrentAmmo, MaxAmmo;
+	FName AmmoID;
+	GetCurrentAmmoData(CurrentAmmo, MaxAmmo, AmmoID);
+
+	UBPC_Inventory* Inv = GetOwner()->FindComponentByClass<UBPC_Inventory>();
+	if (Inv)
+	{
+		int32 AmmoNeeded = MaxAmmo - CurrentAmmo;
+		int32 AvailableAmmo = Inv->GetTotalQuantityByID(AmmoID);
+		int32 AmmoToReload = FMath::Min(AmmoNeeded, AvailableAmmo);
+
+		Inv->ConsumeItem(AmmoID, AmmoToReload);
+
+		if (CurrentWeaponIndex == 1) AmmoInMag1 += AmmoToReload;
+		else if (CurrentWeaponIndex == 2) AmmoInMag2 += AmmoToReload;
+	}
+	bIsReloading = false;
+	OnAmmoUpdated.Broadcast(); // UI 갱신
+}
+
+
+// 데이터 테이블에서 정보를 가져오는 헬퍼 함수
+void UBPC_Equipment::GetCurrentAmmoData(int32& OutCurrentAmmo, int32& OutMaxAmmo, FName& OutAmmoID)
+{
+	OutCurrentAmmo = (CurrentWeaponIndex == 1) ? AmmoInMag1 : AmmoInMag2;
+
+	FName ItemID = (CurrentWeaponIndex == 1) ? MainWeapon1.ItemID : MainWeapon2.ItemID;
+	FItemData* Data = ItemDataTable->FindRow<FItemData>(ItemID, TEXT(""));
+
+	if (Data)
+	{
+		OutMaxAmmo = Data->MaxAmmo;
+		OutAmmoID = Data->AmmoItemID;
+	}
+}
+
+void UBPC_Equipment::OnRep_AmmoChanged()
+{
+	// 탄수가 바뀌면 UI에 알림
+	OnAmmoUpdated.Broadcast();
+}
+
+void UBPC_Equipment::GetCurrentWeaponAmmoInfo(int32& CurrentMag, int32& TotalExtra)
+{
+	CurrentMag = 0;
+	TotalExtra = 0;
+
+	if (CurrentWeaponIndex == 0) return;
+
+	// 1. 현재 탄창의 수량
+	CurrentMag = (CurrentWeaponIndex == 1) ? AmmoInMag1 : AmmoInMag2;
+
+	// 2. 예비 탄수 계산 (인벤토리에서 해당 탄약 ID 검색)
+	FName CurrentItemID = (CurrentWeaponIndex == 1) ? MainWeapon1.ItemID : MainWeapon2.ItemID;
+	FItemData* Data = ItemDataTable->FindRow<FItemData>(CurrentItemID, TEXT(""));
+
+	if (Data)
+	{
+		UBPC_Inventory* Inv = GetOwner()->FindComponentByClass<UBPC_Inventory>();
+		if (Inv)
+		{
+			TotalExtra = Inv->GetTotalQuantityByID(Data->AmmoItemID);
 		}
 	}
 }
