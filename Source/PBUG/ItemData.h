@@ -7,10 +7,14 @@
 UENUM(BlueprintType)
 enum class EConsumableType : uint8
 {
-	Bandage UMETA(DisplayName = "Bandage"),        // 붕대 (찔끔 회복)
-	FirstAidKit UMETA(DisplayName = "FirstAidKit"), // 구상 (75%까지 회복)
-	MedKit UMETA(DisplayName = "MedKit"),         // 의료용 키트 (100% 회복)
-	Drink UMETA(DisplayName = "Drink")             // 에너지 드링크
+	// 붕대 (찔끔 회복)
+	Bandage UMETA(DisplayName = "Bandage"),        
+	// 구상 (75%까지 회복)
+	FirstAidKit UMETA(DisplayName = "FirstAidKit"), 
+	// 의료용 키트 (100% 회복)
+	MedKit UMETA(DisplayName = "MedKit"),         
+	// 에너지 드링크
+	Drink UMETA(DisplayName = "Drink")            
 };
 
 UENUM(BlueprintType)
@@ -92,6 +96,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Consumable")
 	float MaxHealLimit; // 회복 한계선 (예: 75.0 또는 100.0)
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Consumable")
+	float BoostAmount; // 드링크 40, 진통제 60 등
 
 
 	// 탄도학 관련 변수들
