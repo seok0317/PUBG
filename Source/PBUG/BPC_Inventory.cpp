@@ -135,27 +135,38 @@ void UBPC_Inventory::DropItem(FName ItemID, int32 Quantity)
 
 void UBPC_Inventory::RemoveItemData(FName ItemID, int32 Quantity)
 {
-    for (int32 i = 0; i < InventoryArray.Num(); i++)
+
+    for (int32 i = InventoryArray.Num() - 1; i >= 0; i--)
     {
         if (InventoryArray[i].ItemID == ItemID)
         {
+            // 데이터 테이블에서 무게 정보 가져오기
             FItemData* Data = ItemDataTable->FindRow<FItemData>(ItemID, TEXT(""));
             float UnitWeight = Data ? Data->ItemWeight : 0.0f;
 
             if (InventoryArray[i].Quantity > Quantity)
             {
+                // 뺴려는 수량보다 많으면 수량만 감소
                 InventoryArray[i].Quantity -= Quantity;
                 CurrentWeight -= (UnitWeight * Quantity);
+                Quantity = 0; // 모두 제거함
             }
             else
             {
-                // 수량이 딱 맞거나 더 크면 슬롯 삭제
-                CurrentWeight -= (UnitWeight * InventoryArray[i].Quantity);
+                // 수량이 딱 맞거나 부족하면 슬롯 통째로 삭제
+                int32 RemovedQty = InventoryArray[i].Quantity;
+                CurrentWeight -= (UnitWeight * RemovedQty);
                 InventoryArray.RemoveAt(i);
+                Quantity -= RemovedQty; // 남은 수량만큼 다음 슬롯에서 계속 찾음
             }
-            break;
         }
+
+        // 뺄 만큼 다 뺐으면 루프 종료
+        if (Quantity <= 0) break;
     }
+
+    // 데이터가 바뀌었으므로 UI 방송
+    OnInventoryUpdated.Broadcast();
 }
 
 void UBPC_Inventory::SpawnItemOnGround(FName ItemID, int32 Quantity)
@@ -182,7 +193,7 @@ void UBPC_Inventory::SpawnItemOnGround(FName ItemID, int32 Quantity)
     }
 
     // 3. 랜덤 회전 (배그처럼 아이템이 떨구는 방향마다 랜덤하게 돌아가게)
-    FRotator SpawnRot = FRotator(90.0f, 0.0f, 0.0f);
+    FRotator SpawnRot = FRotator(0.0f, FMath::FRandRange(0.f, 360.f), 0.0f);
 
     // 4. 진짜 BP 클래스 소환 (ItemBaseClass 사용)
     UClass* ClassToSpawn = ItemBaseClass ? *ItemBaseClass : AItemBase::StaticClass();
@@ -216,28 +227,5 @@ int32 UBPC_Inventory::GetTotalQuantityByID(FName ItemID)
 
 void UBPC_Inventory::ConsumeItem(FName ItemID, int32 Quantity)
 {
-    int32 RemainingToRemove = Quantity;
-
-    for (int32 i = InventoryArray.Num() - 1; i >= 0; i--)
-    {
-        if (InventoryArray[i].ItemID == ItemID)
-        {
-            if (InventoryArray[i].Quantity > RemainingToRemove)
-            {
-                InventoryArray[i].Quantity -= RemainingToRemove;
-                RemainingToRemove = 0;
-                break;
-            }
-            else
-            {
-                RemainingToRemove -= InventoryArray[i].Quantity;
-                InventoryArray.RemoveAt(i);
-            }
-        }
-        if (RemainingToRemove <= 0) break;
-    }
-
-    // 무게 갱신 및 UI 업데이트
-    // (기존에 만든 무게 계산 로직이 있다면 여기서 호출)
-    OnInventoryUpdated.Broadcast();
+    RemoveItemData(ItemID, Quantity);
 }

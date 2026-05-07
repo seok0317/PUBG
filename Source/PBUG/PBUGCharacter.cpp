@@ -75,6 +75,11 @@ void APBUGCharacter::BeginPlay()
 	// Call the base class  
 	Super::BeginPlay();
 
+	if (IsLocallyControlled())
+	{
+		Server_SetAimRotation(GetControlRotation());
+	}
+
 	//Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
@@ -193,12 +198,23 @@ void APBUGCharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 
+		// [추가] 로컬 플레이어라면 마우스를 움직일 때마다 서버에 알림
+		if (IsLocallyControlled())
+		{
+			Server_SetAimRotation(GetControlRotation());
+		}
 		// 플레이어가 마우스를 수직으로 움직이면 자동 복구 중단 (손맛 방해 금지)
 		if (FMath::Abs(LookAxisVector.Y) > 0.0f && EquipmentComponent)
 		{
 			EquipmentComponent->ResetRecoilRecovery();
 		}
 	}
+}
+
+// 3. RPC 구현
+void APBUGCharacter::Server_SetAimRotation_Implementation(FRotator NewRot)
+{
+	RemoteAimRotation = NewRot;
 }
 
 void APBUGCharacter::CheckInteractables()
@@ -374,6 +390,7 @@ void APBUGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(APBUGCharacter, bIsDead);
 
 	DOREPLIFETIME(APBUGCharacter, ActiveGameplayTags);
+	DOREPLIFETIME(APBUGCharacter, RemoteAimRotation);
 }
 
 float APBUGCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -450,7 +467,7 @@ void APBUGCharacter::StopAim(const FInputActionValue& Value) {
 float APBUGCharacter::GetAimPitch() const
 {
 	// 1. 카메라 각도와 캐릭터 몸 각도의 차이를 구함
-	FRotator ControlRot = GetControlRotation();
+	FRotator ControlRot = RemoteAimRotation;
 	FRotator ActorRot = GetActorRotation();
 
 	// 2. 두 각도의 차이 계산 후 정규화 (-180 ~ 180)
@@ -508,3 +525,35 @@ bool APBUGCharacter::HasAnyMatchingGameplayTags(const FGameplayTagContainer& Tag
 bool APBUGCharacter::IsDead() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Dead"))); }
 bool APBUGCharacter::IsAiming() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Aiming"))); }
 bool APBUGCharacter::IsReloading() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action.Reloading"))); }
+bool APBUGCharacter::IsUsingItem() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action.UsingItem"))); }
+
+
+void APBUGCharacter::RefreshMovementSpeed()
+{
+	if (!GetCharacterMovement()) return;
+
+	// 목표 속도 초기화
+	float TargetSpeed = NormalWalkSpeed;
+
+	if (IsDead()) TargetSpeed = 0.0f;
+	else if (IsAiming() || IsUsingItem()) TargetSpeed = SlowWalkSpeed;
+	else if (ConsumableComponent && ConsumableComponent->CurrentBoost >= 60.0f)
+	{
+		if (ConsumableComponent->CurrentBoost > 90.0f) TargetSpeed = 500.0f * 1.062f;
+		else TargetSpeed = 500.0f * 1.025f;
+	}
+
+	// [중요] 현재 속도와 목표 속도가 다를 때만 업데이트
+	// 이렇게 해야 매번 500을 거쳤다가 150으로 가는 "깜빡임" 현상이 사라집니다.
+	if (GetCharacterMovement()->MaxWalkSpeed != TargetSpeed)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = TargetSpeed;
+		UE_LOG(LogTemp, Log, TEXT("속도 변경됨: %f"), TargetSpeed);
+	}
+}
+
+void APBUGCharacter::OnRep_ActiveGameplayTags()
+{
+	// 서버에서 태그 스티커가 도착하자마자 클라이언트도 속도를 계산함
+	RefreshMovementSpeed();
+}

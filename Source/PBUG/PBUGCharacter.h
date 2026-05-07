@@ -159,6 +159,10 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Combat")
 	void K2_StopADSEffects();
 
+	// 틱 대신 마우스 입력 시에만 업데이트될 복제 변수
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Combat")
+	FRotator RemoteAimRotation;
+
 	/*============== 연사 =================*/
 
 	// 사격 중단을 위한 함수 추가
@@ -169,11 +173,25 @@ protected:
 
 	/*============= Tag ==============*/
 
-	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Abilities")
+	UPROPERTY(ReplicatedUsing = OnRep_ActiveGameplayTags, VisibleAnywhere, BlueprintReadOnly, Category = "Abilities")
 	FGameplayTagContainer ActiveGameplayTags;
+
+	// 기본 이동 속도 정의
+	const float NormalWalkSpeed = 500.0f;
+	const float SlowWalkSpeed = 150.0f; // 조준 및 아이템 사용 시 속도
 
 
 public:
+	// 서버로 각도를 보내는 RPC (사격만큼 중요하지 않으므로 Unreliable 권장)
+	UFUNCTION(Server, Unreliable)
+	void Server_SetAimRotation(FRotator NewRot);
+
+	// 태크바뀔때 OnRep함수
+	UFUNCTION()
+	void OnRep_ActiveGameplayTags();
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	// 데미지 받기
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
@@ -219,6 +237,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	float GetAimPitch() const;
 
+	// 다른 곳에서 각도를 읽어갈 Getter
+	FRotator GetRemoteAimRotation() const { return RemoteAimRotation; }
+
 	UFUNCTION(BlueprintPure, Category = "Stat")
 	float GetCurrentHealth() const { return CurrentHealth; }
 
@@ -253,5 +274,11 @@ public:
 	bool IsAiming() const;
 	UFUNCTION(BlueprintPure, Category = "State")
 	bool IsReloading() const;
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsUsingItem() const;
+
+	// 캐릭터의 현재 상태(태그)를 확인하여 속도를 새로고침하는 함수
+	UFUNCTION(BlueprintCallable, Category = "Movement")
+	void RefreshMovementSpeed();
 };
 

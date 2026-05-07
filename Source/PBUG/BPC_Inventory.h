@@ -84,7 +84,8 @@ public:
     // 특정 아이템을 지정된 수량만큼 제거 (재장전용)
     void ConsumeItem(FName ItemID, int32 Quantity);
 
-private: 
     // 가방 배열에서 실제 데이터 제거 로직
     void RemoveItemData(FName ItemID, int32 Quantity);
+private: 
+    
 };

@@ -50,6 +50,10 @@ void AItemBase::UpdateItemVisual()
 		if (Data && MeshComponent)
 		{
 			MeshComponent->SetStaticMesh(Data->ItemMesh);
+			FVector FinalScale = Data->DropMeshScale.IsNearlyZero() ? FVector(1.0f) : Data->DropMeshScale;
+			MeshComponent->SetWorldScale3D(FinalScale);
+
+			MeshComponent->SetRelativeRotation(Data->DropMeshRotation);
 		}
 	}
 	else

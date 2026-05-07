@@ -194,6 +194,9 @@ private:
 	// 연사 타이머 핸들
 	FTimerHandle FireTimerHandle;
 
+	// 재장전 타이머 핸들
+	FTimerHandle ReloadTimerHandle;
+
 	// 실제로 발사 로직(조준 보정 + Server_Fire)을 실행하는 함수
 	void FireTick();
 

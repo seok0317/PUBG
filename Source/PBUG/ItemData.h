@@ -70,6 +70,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
 	float ItemWeight;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Visual")
+	FVector DropMeshScale; // 바닥에 떨어졌을 때의 스케일 (기본값 1.0, 1.0, 1.0)
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Visual")
+	FRotator DropMeshRotation; // 바닥에 놓일 때의 메쉬 회전 보정값
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item")
 	float CapacityBonus; // 가방일 경우 늘려줄 용량 (예: 1레벨 가방 150)
 

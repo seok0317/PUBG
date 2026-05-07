@@ -401,8 +401,10 @@ void UBPC_Equipment::Server_SetAiming_Implementation(bool bNewAiming) {
 		FGameplayTag AimTag = FGameplayTag::RequestGameplayTag(FName("State.Status.Aiming"));
 		if (bNewAiming) PC->AddGameplayTag(AimTag);
 		else PC->RemoveGameplayTag(AimTag);
-	}
 
+		PC->RefreshMovementSpeed();
+	}
+	
 	OnRep_IsAiming();
 }
 
@@ -424,7 +426,7 @@ float UBPC_Equipment::GetADSFOV() {
 
 void UBPC_Equipment::GetADSHandTransform(FVector& OutLocation, FRotator& OutRotation)
 {
-	ACharacter* Character = Cast<ACharacter>(GetOwner());
+	APBUGCharacter* Character = Cast<APBUGCharacter>(GetOwner());
 	AActor* CurrentWeapon = (CurrentWeaponIndex == 1) ? MainWeapon1Actor : MainWeapon2Actor;
 
 	if (!Character || !CurrentWeapon) return;
@@ -454,10 +456,20 @@ void UBPC_Equipment::GetADSHandTransform(FVector& OutLocation, FRotator& OutRota
 
 		// 5. 회전은 카메라 컨트롤 로테이션의 '캐릭터 상대 각도'를 줍니다.
 		// (마우스를 내리면 총구도 정확히 그만큼 내려가게 함)
-		FRotator ControlRot = Character->GetControlRotation();
+		FRotator AimRot;
+		if (Character->IsLocallyControlled())
+		{
+			// 1. 내 화면이라면: 현재 컨트롤러의 실제 회전값을 즉시 사용 (반동 포함)
+			AimRot = Character->GetControlRotation();
+		}
+		else
+		{
+			// 2. 다른 사람 화면이라면: 서버에서 복제되어 온 각도 사용
+			AimRot = Character->GetRemoteAimRotation();
+		}
 		FRotator ActorRot = Character->GetActorRotation();
 
-		FRotator RelativeAimRot = (ControlRot - ActorRot).GetNormalized();
+		FRotator RelativeAimRot = (AimRot - ActorRot).GetNormalized();
 
 		OutRotation = RelativeAimRot + ADSRotationOffset;
 	}
@@ -608,6 +620,12 @@ void UBPC_Equipment::ApplyRecoil()
 		PC->AddYawInput(FMath::FRandRange(-(FinalHorizontal * 0.1f), (FinalHorizontal * 0.1f)));
 	}
 
+	APBUGCharacter* PCChar = Cast<APBUGCharacter>(OwnerPawn);
+	if (PCChar)
+	{
+		PCChar->Server_SetAimRotation(PCChar->GetControlRotation());
+	}
+
 	// 2. [수정] 누적(+=)이 아니라 대입(=)으로 변경
 	// 이렇게 하면 연사 중에는 계속 덮어씌워지다가 마지막 탄의 값만 남습니다.
 	PendingRecoilRecovery = (FinalVertical * Data->RecoilRecoveryFraction);
@@ -683,7 +701,7 @@ void UBPC_Equipment::Server_Reload_Implementation()
 
 		// 4. 애니메이션 길이만큼 기다린 후 탄약 채우기 (타이머)
 		float AnimDuration = Data->ReloadMontage->GetPlayLength();
-		GetWorld()->GetTimerManager().SetTimer(FireTimerHandle, this, &UBPC_Equipment::FinishReloading, AnimDuration, false);
+		GetWorld()->GetTimerManager().SetTimer(ReloadTimerHandle, this, &UBPC_Equipment::FinishReloading, AnimDuration, false);
 	}
 	else
 	{
