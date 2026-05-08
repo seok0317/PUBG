@@ -127,7 +127,7 @@ void UBPC_Inventory::DropItem(FName ItemID, int32 Quantity)
     RemoveItemData(ItemID, Quantity);
 
     // 2. 바닥에 스폰
-    SpawnItemOnGround(ItemID, Quantity);
+    SpawnItemOnGround(ItemID, Quantity, 0);
 
     // 3. UI 갱신 방송
     OnInventoryUpdated.Broadcast();
@@ -169,7 +169,7 @@ void UBPC_Inventory::RemoveItemData(FName ItemID, int32 Quantity)
     OnInventoryUpdated.Broadcast();
 }
 
-void UBPC_Inventory::SpawnItemOnGround(FName ItemID, int32 Quantity)
+void UBPC_Inventory::SpawnItemOnGround(FName ItemID, int32 Quantity, int32 InitialAmmo)
 {
     if (ItemID.IsNone() || GetOwnerRole() < ROLE_Authority) return;
 
@@ -208,6 +208,7 @@ void UBPC_Inventory::SpawnItemOnGround(FName ItemID, int32 Quantity)
         NewItem->ItemDataTable = ItemDataTable;
         NewItem->Quantity = Quantity;
         NewItem->ItemID = ItemID;
+        NewItem->ContainedAmmo = InitialAmmo; // [추가] 장탄수 저장
 
         NewItem->UpdateItemVisual();
 

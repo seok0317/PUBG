@@ -14,6 +14,7 @@
 #include "BPC_Equipment.h"
 #include "InputActionValue.h"
 #include "Net/UnrealNetwork.h"
+#include "OnlineSubsystem.h"
 #include "BPC_ConsumableComponent.h"
 #include "Camera/CameraComponent.h" // 카메라 컴포넌트 접근용
 
@@ -74,6 +75,8 @@ void APBUGCharacter::BeginPlay()
 {
 	// Call the base class  
 	Super::BeginPlay();
+
+	
 
 	if (IsLocallyControlled())
 	{
@@ -258,6 +261,15 @@ void APBUGCharacter::CheckInteractables()
 
 void APBUGCharacter::PickupItem()
 {
+	IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get();
+	if (OnlineSub)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("현재 온라인 서브시스템: %s"), *OnlineSub->GetSubsystemName().ToString());
+	}
+	else 
+	{
+		UE_LOG(LogTemp, Error, TEXT("=== 서브시스템을 아예 찾지 못했습니다! ==="));
+	}
 	if (TargetActor)
 	{
 		// 서버에게 줍기를 요청한다!
@@ -287,7 +299,7 @@ void APBUGCharacter::Server_PickupItem_Implementation(AActor* ItemToPickup)
 		// 2. 만약 무기라면? -> 장착 컴포넌트로 보냄
 		if (Data->ItemType == EItemType::Weapon)
 		{
-			EquipmentComponent->Server_EquipWeapon(Item->ItemID);
+			EquipmentComponent->Server_EquipWeapon(Item->ItemID, Item->ContainedAmmo);
 			ItemToPickup->Destroy();
 		}
 		// 3. 소모품이나 탄약이라면? -> 기존 인벤토리로 보냄
@@ -451,6 +463,11 @@ void APBUGCharacter::Die() { // 서버가 인식하는 함수
 
 void APBUGCharacter::StartAim(const FInputActionValue& Value) {
 	if (EquipmentComponent) {
+		if (!IsArmed())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("무기가 없어 조준할 수 없습니다."));
+			return;
+		}
 		EquipmentComponent->Server_SetAiming(true);
 		K2_StartADSEffects();
 	}
@@ -526,6 +543,7 @@ bool APBUGCharacter::IsDead() const { return HasMatchingTag(FGameplayTag::Reques
 bool APBUGCharacter::IsAiming() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Aiming"))); }
 bool APBUGCharacter::IsReloading() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action.Reloading"))); }
 bool APBUGCharacter::IsUsingItem() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Action.UsingItem"))); }
+bool APBUGCharacter::IsArmed() const { return HasMatchingTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Armed"))); }
 
 
 void APBUGCharacter::RefreshMovementSpeed()

@@ -39,9 +39,9 @@ void UBPC_Equipment::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(UBPC_Equipment, bIsReloading);
 }
 
-bool UBPC_Equipment::Server_EquipWeapon_Validate(FName ItemID) { return true; }
+bool UBPC_Equipment::Server_EquipWeapon_Validate(FName ItemID, int32 InAmmo) { return true; }
 
-void UBPC_Equipment::Server_EquipWeapon_Implementation(FName ItemID)
+void UBPC_Equipment::Server_EquipWeapon_Implementation(FName ItemID, int32 InAmmo)
 {
 
 
@@ -49,6 +49,7 @@ void UBPC_Equipment::Server_EquipWeapon_Implementation(FName ItemID)
     if (MainWeapon1.ItemID.IsNone())
     {
         MainWeapon1.ItemID = ItemID;
+		AmmoInMag1 = InAmmo;
         MainWeapon1.Quantity = 1;
         SpawnWeaponVisual(1); // 1번 슬롯 스폰
     }
@@ -56,6 +57,7 @@ void UBPC_Equipment::Server_EquipWeapon_Implementation(FName ItemID)
     else if (MainWeapon2.ItemID.IsNone())
     {
         MainWeapon2.ItemID = ItemID;
+		AmmoInMag2 = InAmmo;
         MainWeapon2.Quantity = 1;
         SpawnWeaponVisual(2); // 2번 슬롯 스폰
     }
@@ -358,6 +360,7 @@ void UBPC_Equipment::DropWeapon(int32 SlotIndex)
 
 	FSlotData* TargetSlot = (SlotIndex == 1) ? &MainWeapon1 : &MainWeapon2;
 	AActor** TargetActor = (SlotIndex == 1) ? &MainWeapon1Actor : &MainWeapon2Actor;
+	int32* CurrentAmmo = (SlotIndex == 1) ? &AmmoInMag1 : &AmmoInMag2;
 
 	if (TargetSlot->ItemID.IsNone()) return;
 
@@ -365,9 +368,11 @@ void UBPC_Equipment::DropWeapon(int32 SlotIndex)
 	auto* InvComp = GetOwner()->FindComponentByClass<UBPC_Inventory>();
 	if (InvComp)
 	{
-		InvComp->SpawnItemOnGround(TargetSlot->ItemID, 1);
+		InvComp->SpawnItemOnGround(TargetSlot->ItemID, 1, *CurrentAmmo);
 		
 	}
+
+	*CurrentAmmo = 0;
 
 	// 2. 장착된 액터 파괴 및 데이터 초기화
 	if (*TargetActor)
@@ -391,6 +396,8 @@ void UBPC_Equipment::DropWeapon(int32 SlotIndex)
 bool UBPC_Equipment::Server_SetAiming_Validate(bool bNewAiming) { return true; }
 
 void UBPC_Equipment::Server_SetAiming_Implementation(bool bNewAiming) {
+	if (bNewAiming && CurrentWeaponIndex == 0) return;
+
 	bIsAiming = bNewAiming;
 	// 서버(호스트) 본인의 비주얼 업데이트를 위해 호출
 

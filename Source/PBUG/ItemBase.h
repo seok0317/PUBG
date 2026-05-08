@@ -30,6 +30,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Item")
 	int32 Quantity = 1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Item")
+	int32 ContainedAmmo = 0;
+
 	UFUNCTION()
 	void OnRep_ItemID();
 
@@ -54,5 +57,7 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
 	UStaticMeshComponent* MeshComponent;
+
+ 
 
 };

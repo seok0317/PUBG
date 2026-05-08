@@ -62,7 +62,7 @@ public:
     void DropItem(FName ItemID, int32 Quantity);
 
     // 공용 헬퍼: 바닥에 아이템 액터 생성 (무기 컴포넌트에서도 호출 가능하도록 public)
-    void SpawnItemOnGround(FName ItemID, int32 Quantity);
+    void SpawnItemOnGround(FName ItemID, int32 Quantity, int32 InitialAmmo = 0);
 
 	// 아이템 추가 함수
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
@@ -75,6 +75,8 @@ public:
     // 에디터에서 만든 BP_ItemBase를 여기에 넣어줄 겁니다.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
     TSubclassOf<class AItemBase> ItemBaseClass;
+
+    int32 InAmmo = 0;
 
     /* ==================== 아이템 소모 ================== */
 

@@ -25,6 +25,7 @@ void AItemBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AItemBase, Quantity); // 수량 복제 설정
 	DOREPLIFETIME(AItemBase, ItemID);
 	DOREPLIFETIME(AItemBase, ItemDataTable);
+	DOREPLIFETIME(AItemBase, ContainedAmmo);
 }
 
 void AItemBase::OnConstruction(const FTransform& Transform)

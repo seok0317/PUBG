@@ -63,7 +63,7 @@ public:
 
 	// 서버에서 무기를 장착하는 함수
 	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_EquipWeapon(FName ItemID);
+	void Server_EquipWeapon(FName ItemID, int32 InAmmo);
 
 	// 현재 손에 들고 있는 무기의 슬롯 번호 (0: 맨손, 1: 1번 무기, 2: 2번 무기)
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeaponIndex, BlueprintReadOnly, Category = "Equipment")
@@ -183,6 +183,7 @@ public:
 	// 애니메이션 재생을 위한 멀티캐스트 RPC
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayReloadAnim(UAnimMontage* MontageToPlay);
+
 
 private:
 	// 실제로 총을 소환해서 붙이는 내부 함수

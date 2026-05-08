@@ -276,6 +276,8 @@ public:
 	bool IsReloading() const;
 	UFUNCTION(BlueprintPure, Category = "State")
 	bool IsUsingItem() const;
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsArmed() const;
 
 	// 캐릭터의 현재 상태(태그)를 확인하여 속도를 새로고침하는 함수
 	UFUNCTION(BlueprintCallable, Category = "Movement")
