@@ -1,8 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+﻿// PBUG.cpp
 #include "PBUG.h"
 #include "Modules/ModuleManager.h"
-#include "OnlineSubsystemUtils.h" // [�߰�]
+#include "OnlineSubsystem.h"
 
-IMPLEMENT_PRIMARY_GAME_MODULE( FDefaultGameModuleImpl, PBUG, "PBUG" );
- 
+class FPBUGModule : public FDefaultGameModuleImpl
+{
+public:
+    virtual void StartupModule() override
+    {
+        // 엔진 초기화 시점에 환경변수 강제 주입
+        FPlatformMisc::SetEnvironmentVar(TEXT("SteamAppId"), TEXT("480")); 
+    }
+};
+
+IMPLEMENT_PRIMARY_GAME_MODULE(FPBUGModule, PBUG, "PBUG");

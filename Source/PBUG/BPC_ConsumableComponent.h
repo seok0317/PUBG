@@ -47,6 +47,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Consumable|Events")
 	FOnBoostUpdated OnBoostUpdated;
 
+	UFUNCTION(Client, Reliable)
+	void Client_NotifyUseItem(FName ItemID, float UseTime);
+
+	UFUNCTION(Client, Reliable)
+	void Client_NotifyCancelItem();
+
 private:
 	// 실제 아이템 효과 적용 (타이머 종료 시 호출)
 	void FinishUseItem();

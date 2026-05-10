@@ -68,12 +68,28 @@ void UBPC_ConsumableComponent::Server_StartUseItem_Implementation(FName ItemID)
 	PC->AddGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Action.UsingItem")));
 	bIsUsing = true;
 
+	Client_NotifyUseItem(ItemID, Data->UseTime);
+
 	// 2. 타이머 시작 (서버에서 시간 체크)
 	GetWorld()->GetTimerManager().SetTimer(UseItemTimerHandle, this, &UBPC_ConsumableComponent::FinishUseItem, Data->UseTime, false);
 
-	// 3. 클라이언트들에게 알림 (애니메이션이나 UI 출력용)
-	OnUseItemStarted.Broadcast(ItemID, Data->UseTime);
+	
 }
+
+void UBPC_ConsumableComponent::Client_NotifyUseItem_Implementation(FName ItemID, float UseTime)
+{
+	// 이 함수가 실행되는 시점은 클라이언트의 컴퓨터입니다.
+	// 여기서 Broadcast를 해야 블루프린트 UI가 소리를 듣고 작동합니다.
+	OnUseItemStarted.Broadcast(ItemID, UseTime);
+
+	// [덤] 클라이언트도 즉시 속도를 줄여서 버벅임을 방지합니다. (예측)
+	APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
+	if (PC)
+	{
+		PC->RefreshMovementSpeed();
+	}
+}
+
 
 void UBPC_ConsumableComponent::CancelUsing()
 {
@@ -83,9 +99,14 @@ void UBPC_ConsumableComponent::CancelUsing()
 	{
 		bIsUsing = false;
 		APBUGCharacter* PC = Cast<APBUGCharacter>(GetOwner());
-		if (PC) PC->RemoveGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Action.UsingItem")));
-		OnUseItemStopped.Broadcast();
+		if (PC) PC->RemoveGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Action.UsingItem")));;
+		Client_NotifyCancelItem();
 	}
+}
+
+void UBPC_ConsumableComponent::Client_NotifyCancelItem_Implementation()
+{
+	OnUseItemStopped.Broadcast();
 }
 
 

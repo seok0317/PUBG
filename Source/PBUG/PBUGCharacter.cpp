@@ -12,6 +12,7 @@
 #include "ItemBase.h" 
 #include "EnhancedInputSubsystems.h"
 #include "BPC_Equipment.h"
+#include "Engine/DamageEvents.h"
 #include "InputActionValue.h"
 #include "Net/UnrealNetwork.h"
 #include "OnlineSubsystem.h"
@@ -280,8 +281,11 @@ void APBUGCharacter::PickupItem()
 // 2. 서버 함수 (검증)
 bool APBUGCharacter::Server_PickupItem_Validate(AActor* ItemToPickup)
 {
-	// 아이템이 null이 아니면 통과시키겠다는 뜻
-	return ItemToPickup != nullptr;
+	if (!ItemToPickup) return false;
+
+	// 서버에서 캐릭터와 아이템 사이의 실제 거리를 체크 
+	float Distance = FVector::Dist(GetActorLocation(), ItemToPickup->GetActorLocation());
+	return Distance <= 500.0f; // 5미터 이상 떨어져 있으면 줍기 요청 거부
 }
 
 // 3. 서버 함수 (실행)
@@ -405,24 +409,62 @@ void APBUGCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(APBUGCharacter, RemoteAimRotation);
 }
 
-float APBUGCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+float APBUGCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	if (GetLocalRole() < ROLE_Authority || IsDead()) return 0.f;
 
+	float FinalDamage = DamageAmount;
+	FString HitBoneName = TEXT("None");
 
-	// 체력 감소 및 제한
-	CurrentHealth = FMath::Clamp(CurrentHealth - DamageAmount, 0.0f, MaxHealth);
+	if (DamageEvent.IsOfType(FPointDamageEvent::ClassID))
+	{
+		FPointDamageEvent* const PointDamage = (FPointDamageEvent*)&DamageEvent;
+		HitBoneName = PointDamage->HitInfo.BoneName.ToString().ToLower();
 
-	UE_LOG(LogTemp, Warning, TEXT("Character Hit! Remaining Health: %f"), CurrentHealth);
 
+		if (HitBoneName == TEXT("head"))
+		{
+			FinalDamage *= 2.5f;
+			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("!!! HEADSHOT !!!"));
+		}
+		else if (HitBoneName.Contains(TEXT("thigh")) ||
+			HitBoneName.Contains(TEXT("calf")) ||
+			HitBoneName.Contains(TEXT("foot")) ||
+			HitBoneName.Contains(TEXT("ball")) ||
+			HitBoneName.Contains(TEXT("ankle")) ||
+			HitBoneName.Contains(TEXT("arm")) ||
+			HitBoneName.Contains(TEXT("hand")) ||
+			HitBoneName.Contains(TEXT("wrist")) ||
+			HitBoneName.Contains(TEXT("clavicle")))
+		{
+			FinalDamage *= 0.5f;
+			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT("Limb Shot"));
+		}
+		else
+		{
+			FinalDamage *= 1.0f;
+			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::White, TEXT("BODY SHOT"));
+		}
+	}
+
+	// 실제 체력 감소
+	CurrentHealth = FMath::Clamp(CurrentHealth - FinalDamage, 0.0f, MaxHealth);
+
+	// 디버그 로그
+	UE_LOG(LogTemp, Warning, TEXT("Hit Bone: %s | Damage: %f | Remaining Health: %f"), *HitBoneName, FinalDamage, CurrentHealth);
+
+	// UI 업데이트
 	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
 
-	if (CurrentHealth <= 0) {
+	// 사망 처리
+	if (CurrentHealth <= 0.0f)
+	{
 		AddGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Dead")));
 		OnRep_IsDead();
 		Die();
 	}
-	return DamageAmount;
+
+	return Super::TakeDamage(FinalDamage, DamageEvent, EventInstigator, DamageCauser);
 }
 
 void APBUGCharacter::OnRep_CurrentHealth() {
@@ -521,11 +563,13 @@ void APBUGCharacter::Heal(float HealAmount, float MaxLimit)
 void APBUGCharacter::AddGameplayTag(FGameplayTag TagToAdd)
 {
 	ActiveGameplayTags.AddTag(TagToAdd);
+	RefreshMovementSpeed();
 }
 
 void APBUGCharacter::RemoveGameplayTag(FGameplayTag TagToRemove)
 {
 	ActiveGameplayTags.RemoveTag(TagToRemove);
+	RefreshMovementSpeed();
 }
 
 bool APBUGCharacter::HasMatchingTag(FGameplayTag TagToCheck) const
