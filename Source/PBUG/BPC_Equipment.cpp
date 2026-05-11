@@ -28,6 +28,8 @@ void UBPC_Equipment::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(UBPC_Equipment, MainWeapon2);
     DOREPLIFETIME(UBPC_Equipment, MainWeapon2Actor);
 
+	DOREPLIFETIME(UBPC_Equipment, BackpackSlot);
+
 	// [추가] 현재 장착된 무기 인덱스도 복제 등록
 	DOREPLIFETIME(UBPC_Equipment, CurrentWeaponIndex); // 추가!
 	DOREPLIFETIME(UBPC_Equipment, bIsAiming);
@@ -798,4 +800,43 @@ void UBPC_Equipment::GetCurrentWeaponAmmoInfo(int32& CurrentMag, int32& TotalExt
 			TotalExtra = Inv->GetTotalQuantityByID(Data->AmmoItemID);
 		}
 	}
+}
+
+void UBPC_Equipment::OnRep_BackpackSlot()
+{
+	OnEquipmentUpdated.Broadcast(); // UI 갱신
+}
+
+bool UBPC_Equipment::Server_EquipBackpack_Validate(FName ItemID) { return true; }
+
+void UBPC_Equipment::Server_EquipBackpack_Implementation(FName ItemID)
+{
+	if (!ItemDataTable) return;
+
+	FItemData* Data = ItemDataTable->FindRow<FItemData>(ItemID, TEXT(""));
+	if (!Data) return;
+
+	// 1. 이미 가방을 메고 있다면? (배그는 더 좋은 가방으로 교체하거나 바닥에 떨굼)
+	if (!BackpackSlot.ItemID.IsNone())
+	{
+		// 기존 가방을 바닥에 스폰하는 로직 (기존 DropWeapon과 유사하게 구현 가능)
+		auto* InvComp = GetOwner()->FindComponentByClass<UBPC_Inventory>();
+		if (InvComp) InvComp->SpawnItemOnGround(BackpackSlot.ItemID, 1);
+	}
+
+	// 2. 가방 정보 업데이트
+	BackpackSlot.ItemID = ItemID;
+	BackpackSlot.Quantity = 1;
+
+	// 3. 인벤토리 컴포넌트의 용량 업데이트 (아까 만든 2단계 함수 호출)
+	UBPC_Inventory* Inv = GetOwner()->FindComponentByClass<UBPC_Inventory>();
+	if (Inv)
+	{
+		Inv->UpdateMaxCapacity(Data->CapacityBonus);
+	}
+
+	// 4. 가방 비주얼 스폰 (총 소환 로직과 거의 동일)
+	// SpawnBackpackVisual(Data->ItemMesh); // 이 함수는 아래에서 설명
+
+	OnEquipmentUpdated.Broadcast();
 }

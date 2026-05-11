@@ -184,6 +184,17 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayReloadAnim(UAnimMontage* MontageToPlay);
 
+	// 가방 슬롯 (무기 슬롯과 동일한 FSlotData 사용)
+	UPROPERTY(ReplicatedUsing = OnRep_BackpackSlot, VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+	FSlotData BackpackSlot;
+
+	UFUNCTION()
+	void OnRep_BackpackSlot();
+
+	// 서버에서 가방을 장착하는 함수
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_EquipBackpack(FName ItemID);
+
 
 private:
 	// 실제로 총을 소환해서 붙이는 내부 함수

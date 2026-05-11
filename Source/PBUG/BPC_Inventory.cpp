@@ -230,3 +230,25 @@ void UBPC_Inventory::ConsumeItem(FName ItemID, int32 Quantity)
 {
     RemoveItemData(ItemID, Quantity);
 }
+
+void UBPC_Inventory::UpdateMaxCapacity(float BonusValue)
+{
+    // 멀티플레이어 보안: 서버에서만 실행되어야 합니다.
+    if (GetOwnerRole() < ROLE_Authority) return;
+
+    // 1. 새로운 최대 용량 계산 (기본 50 + 가방 보너스)
+    MaxCapacity = BaseCapacity + BonusValue;
+
+    // 2. 로그 출력 (디버깅용)
+    UE_LOG(LogTemp, Warning, TEXT("MaxCapacity Updated: %f (Bonus: %f)"), MaxCapacity, BonusValue);
+
+    // 3. UI 갱신 신호 방송 (서버측 인스턴스용)
+    // 클라이언트는 MaxCapacity가 Replicated 변수이므로 값이 도착하면 OnRep을 통해 UI가 갱신됩니다.
+    OnInventoryUpdated.Broadcast();
+}
+
+void UBPC_Inventory::OnRep_WeightChanged()
+{
+    // 무게나 상한선이 복제되어 도착하면 UI에게 알림
+    OnInventoryUpdated.Broadcast();
+}

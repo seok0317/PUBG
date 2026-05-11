@@ -27,12 +27,21 @@ public:
     TArray<FSlotData> InventoryArray;
 
     // 현재 가방에 찬 총 무게
-    UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
+    UPROPERTY(ReplicatedUsing = OnRep_WeightChanged, VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
     float CurrentWeight = 0.0f;
 
     // 현재 가방의 최대 용량 (기본 용량 + 가방 보너스)
-    UPROPERTY(Replicated, EditAnywhere, BlueprintReadOnly, Category = "Inventory")
+    UPROPERTY(ReplicatedUsing = OnRep_WeightChanged, EditAnywhere, BlueprintReadOnly, Category = "Inventory")
     float MaxCapacity = 50.0f; // 가방 없을 때 기본 용량
+
+    UFUNCTION()
+    void OnRep_WeightChanged();
+
+    float BaseCapacity = 50.0f; // 가방 없을 때 기본 용량
+
+    //가방 용량 업데이트
+    UFUNCTION(BlueprintCallable, Category = "Inventory")
+    void UpdateMaxCapacity(float BonusValue);
 
     // 데이터 테이블 변수 추가
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory")
@@ -52,11 +61,6 @@ public:
 
     // 멀티플레이를 위한 필수 함수
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-
-    // 가방 장착 시 용량 업데이트 함수
-    void UpdateMaxCapacity(float NewBonus) {
-        MaxCapacity = 50.0f + NewBonus; // 기본 50에 가방 수치 더하기
-    }
 
     UFUNCTION(BlueprintCallable, Category = "Inventory")
     void DropItem(FName ItemID, int32 Quantity);

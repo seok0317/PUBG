@@ -14,6 +14,7 @@
 #include "BPC_Equipment.h"
 #include "Engine/DamageEvents.h"
 #include "InputActionValue.h"
+#include "PBUGGameMode.h"
 #include "Net/UnrealNetwork.h"
 #include "OnlineSubsystem.h"
 #include "BPC_ConsumableComponent.h"
@@ -262,15 +263,6 @@ void APBUGCharacter::CheckInteractables()
 
 void APBUGCharacter::PickupItem()
 {
-	IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get();
-	if (OnlineSub)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("현재 온라인 서브시스템: %s"), *OnlineSub->GetSubsystemName().ToString());
-	}
-	else 
-	{
-		UE_LOG(LogTemp, Error, TEXT("=== 서브시스템을 아예 찾지 못했습니다! ==="));
-	}
 	if (TargetActor)
 	{
 		// 서버에게 줍기를 요청한다!
@@ -304,6 +296,13 @@ void APBUGCharacter::Server_PickupItem_Implementation(AActor* ItemToPickup)
 		if (Data->ItemType == EItemType::Weapon)
 		{
 			EquipmentComponent->Server_EquipWeapon(Item->ItemID, Item->ContainedAmmo);
+			ItemToPickup->Destroy();
+		}
+		// 2. 가방(장구류)일 때 추가!
+		else if (Data->ItemType == EItemType::Equipment)
+		{
+			// 여기서 Equipment는 가방이라고 가정
+			EquipmentComponent->Server_EquipBackpack(Item->ItemID);
 			ItemToPickup->Destroy();
 		}
 		// 3. 소모품이나 탄약이라면? -> 기존 인벤토리로 보냄
@@ -459,6 +458,8 @@ float APBUGCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& 
 	// 사망 처리
 	if (CurrentHealth <= 0.0f)
 	{
+		bIsDead = true;
+
 		AddGameplayTag(FGameplayTag::RequestGameplayTag(FName("State.Status.Dead")));
 		OnRep_IsDead();
 		Die();
@@ -490,6 +491,15 @@ void APBUGCharacter::HandleDeathVisuals() // 클라이언트가 인식하는 함
 
 void APBUGCharacter::Die() { // 서버가 인식하는 함수
 	// 사망 처리 (래그돌 등)
+	if (HasAuthority())
+	{
+		APBUGGameMode* GM = GetWorld()->GetAuthGameMode<APBUGGameMode>();
+		if (GM)
+		{
+			GM->PlayerDied(GetController());
+		}
+	}
+
 	if (GetLocalRole() == ROLE_Authority)
 	{
 		// 입력 중지 및 컨트롤러 해제

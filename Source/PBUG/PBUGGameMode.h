@@ -15,6 +15,12 @@ class APBUGGameMode : public AGameModeBase
 public:
 	APBUGGameMode();
 
+	// 플레이어가 서버에 성공적으로 접속했을 때 호출됨
+	virtual void PostLogin(APlayerController* NewPlayer) override;
+
+	// 플레이어가 사망했을 때 캐릭터에서 호출할 함수
+	void PlayerDied(AController* VictimController);
+
 protected:
 	virtual void BeginPlay() override;
 
